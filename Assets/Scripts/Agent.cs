@@ -1,19 +1,21 @@
-using System.Collections;
+using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Agent : MonoBehaviour
 {
-    public List<Action> AllActions = new();
     public List<Action> ActionQueue = new();
-    public List<Item> Inventory = new();
 
     public Action ActionToPerform;
 
     public float speed;
     public bool AtActionPosition = false;
+    
+    private Action[] AllActions;
 
     private void Start() {
+        AllActions = FindObjectsOfType<Action>();
+
         CreateActionQueue(ActionToPerform);
     }
 
@@ -21,10 +23,12 @@ public class Agent : MonoBehaviour
         Checkup();
     }
 
-    public void CreateActionQueue(Action action) {
+    public void CreateActionQueue(Action Goal) {
         List<Action> OpenList = new();
-        OpenList.Add(action);
-        ActionQueue.Add(action);
+        List<Action> ClosedList = new();
+
+        OpenList.Add(Goal);
+        ActionQueue.Add(Goal);
 
         bool IsDone = false;
         int BreakoutTimer = 0;
@@ -32,21 +36,38 @@ public class Agent : MonoBehaviour
         while(!IsDone && BreakoutTimer < 10) {
             var currentAction = OpenList[0];
 
-            if(currentAction.HasRequirement)
-                foreach (var act in GetActions(currentAction)) {
-                    OpenList.Add(act);
-                    ActionQueue.Add(act);
-                    break;
+            for (int i = 1; i < OpenList.Count; i++) {
+                if (OpenList[i].FScore < currentAction.FScore || (OpenList[i].FScore == currentAction.FScore && OpenList[i].ActionCost < currentAction.ActionCost)) {
+                    currentAction = OpenList[i];
                 }
+            }
 
-            Debug.Log(OpenList.Count);
+            ClosedList.Add(currentAction);
+            OpenList.Remove(currentAction);
 
-            OpenList.RemoveAt(0);
-
-            if (OpenList.Count < 1) {
+            if (!currentAction.HasRequirement) {
                 ActionQueue.Reverse();
                 IsDone = true;
             }
+
+            foreach (var action in GetActions(currentAction)) {
+                if (ClosedList.Contains(action))
+                    continue;
+
+                int newActionCost = currentAction.GScore + action.ActionCost;
+                if (newActionCost < action.GScore || !OpenList.Contains(action)) {
+                    action.GScore = newActionCost;
+
+                    if (!OpenList.Contains(action)) {
+                        OpenList.Add(action);
+                    }
+                }
+
+                var best = GetActions(currentAction).OrderBy(Action => Action.ActionCost).First();
+                OpenList.Add(best);
+                ActionQueue.Add(best);
+            }
+
             BreakoutTimer++;
         }
     }
@@ -78,7 +99,6 @@ public class Agent : MonoBehaviour
             transform.position = Vector3.MoveTowards(transform.position, ActionQueue[0].transform.position, speed * Time.deltaTime);
         else {
             ActionQueue[0].OnEnter();
-            Debug.Log("Running");
             AtActionPosition = true;
         }
     }
