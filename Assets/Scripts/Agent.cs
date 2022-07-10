@@ -1,93 +1,104 @@
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Agent : MonoBehaviour
 {
     public List<Action> ActionQueue = new();
 
-    public Action ActionToPerform;
-
     public float speed;
-    public bool AtActionPosition = false;
-    
+    public bool atActionPosition = false;
+
+    public Text InformationText;
+
     private Action[] AllActions;
+    private UtilitySystem UtilitySystem;
 
     private void Start() {
         AllActions = FindObjectsOfType<Action>();
-
-        CreateActionQueue(ActionToPerform);
+        UtilitySystem = GetComponent<UtilitySystem>();
     }
 
     private void Update() {
         Checkup();
     }
 
-    public void CreateActionQueue(Action Goal) {
-        List<Action> OpenList = new();
-        List<Action> ClosedList = new();
+    public void CreateActionQueue(Action goal) {
+        List<Action> openList = new();
+        List<Action> closedList = new();
 
-        OpenList.Add(Goal);
-        ActionQueue.Add(Goal);
+        openList.Add(goal);
 
-        bool IsDone = false;
-        int BreakoutTimer = 0;
+        bool isDone = false;
+        int breakoutTimer = 0;
 
-        while(!IsDone && BreakoutTimer < 10) {
-            var currentAction = OpenList[0];
+        while(!isDone && breakoutTimer < 100) {
+            var currentAction = openList[0];
 
-            for (int i = 1; i < OpenList.Count; i++) {
-                if (OpenList[i].FScore < currentAction.FScore || (OpenList[i].FScore == currentAction.FScore && OpenList[i].ActionCost < currentAction.ActionCost)) {
-                    currentAction = OpenList[i];
+            for (int i = 1; i < openList.Count; i++) {
+                if (openList[i].FScore < currentAction.FScore || (openList[i].FScore == currentAction.FScore && openList[i].HScore < currentAction.HScore)) {
+                    currentAction = openList[i];
                 }
             }
 
-            ClosedList.Add(currentAction);
-            OpenList.Remove(currentAction);
+            closedList.Add(currentAction);
+            openList.Remove(currentAction);
 
             if (!currentAction.HasRequirement) {
-                ActionQueue.Reverse();
-                IsDone = true;
+                while (currentAction != goal) {
+                    ActionQueue.Add(currentAction);
+                    currentAction = currentAction.ActionParent;
+                }
+                ActionQueue.Add(goal);
+                break;
             }
 
             foreach (var action in GetActions(currentAction)) {
-                if (ClosedList.Contains(action))
+                if (closedList.Contains(action))
                     continue;
 
-                int newActionCost = currentAction.GScore + action.ActionCost;
-                if (newActionCost < action.GScore || !OpenList.Contains(action)) {
-                    action.GScore = newActionCost;
+                int newActionCost = currentAction.GScore + action.ActionCost + Mathf.RoundToInt(Vector3.Distance(currentAction.transform.position, action.transform.position));
 
-                    if (!OpenList.Contains(action)) {
-                        OpenList.Add(action);
+                if (newActionCost < action.GScore || !openList.Contains(action)) {
+                    action.GScore = newActionCost;
+                    action.HScore = action.ActionCost + Mathf.RoundToInt(Vector3.Distance(currentAction.transform.position, action.transform.position));
+                    action.ActionParent = currentAction;
+
+                    if (!openList.Contains(action)) {
+                        openList.Add(action);
                     }
                 }
-
-                var best = GetActions(currentAction).OrderBy(Action => Action.ActionCost).First();
-                OpenList.Add(best);
-                ActionQueue.Add(best);
             }
 
-            BreakoutTimer++;
+            breakoutTimer++;
         }
+
+        UtilitySystem.PickNewAction = false;
     }
 
     public void Checkup() {
         if (ActionQueue.Count == 0) {
-            Debug.Log("No Actions");
+            InformationText.text = "Done With Actions";
+            UtilitySystem.PickNewAction = true;
             return;
         }
 
         if (ActionQueue[0].IsDone) {
-            AtActionPosition = false;
+            atActionPosition = false;
+            ActionQueue[0].OnExit();
             ActionQueue.RemoveAt(0);
             return;
         }
 
-        if (!AtActionPosition)
+        if (!atActionPosition) {
             MoveToAction();
-        else
+            InformationText.text = "Moving to: " + ActionQueue[0].ActionName;
+        }
+        else {
             PerformAction();
+            InformationText.text = "Performing: " + ActionQueue[0].ActionName;
+        }
     }
 
     public void PerformAction() {
@@ -99,7 +110,7 @@ public class Agent : MonoBehaviour
             transform.position = Vector3.MoveTowards(transform.position, ActionQueue[0].transform.position, speed * Time.deltaTime);
         else {
             ActionQueue[0].OnEnter();
-            AtActionPosition = true;
+            atActionPosition = true;
         }
     }
 
